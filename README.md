@@ -2,4 +2,4 @@
 
 Repo for Sarcasm Detection project for NLP.
 
-Testing encoders against LLMs in sarcasm detection.
+Testing encoders against LLMs in sarcasm detection
