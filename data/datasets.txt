@@ -1,0 +1,12 @@
+MUStARD
+https://github.com/soujanyaporia/MUStARD
+Sarcasm Corpus V2
+https://github.com/soraby/sarcasm2
+iSarcasmEval
+https://github.com/iabufarha/iSarcasmEval
+Conversation Sarcasm Corpus
+https://github.com/CoPsyN/CSC
+Self-Annotated Reddit Corpus
+https://github.com/NLPrinceton/SARC
+News-Headlines-Dataset-For-Sarcasm-Detection
+https://github.com/rishabhmisra/News-Headlines-Dataset-For-Sarcasm-Detection

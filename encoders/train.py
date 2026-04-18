@@ -2,10 +2,14 @@ import argparse
 import importlib
 import json
 import os
+import sys
 
 import torch
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import DataLoader
 from transformers import get_linear_schedule_with_warmup
+
+sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
+from common.dataloader import SarcasmDataset
 
 VALID_ENCODERS = {"bert", "roberta", "deberta", "distilbert", "electra"}
 OUTPUT_DIR = "/app/outputs"
@@ -18,35 +22,6 @@ ENCODER_DEFAULTS = {
     "deberta":     {"lr": 1e-5, "batch_size": 8,  "epochs": 4},
     "electra":     {"lr": 2e-5, "batch_size": 16, "epochs": 3},
 }
-
-class SarcasmDataset(Dataset):
-    """
-    Expects a tab-separated file with columns: text, label (0 or 1).
-    Path is controlled by the DATA_PATH env var or --data argument.
-    """
-
-    def __init__(self, path, tokenizer, max_length=128):
-        import pandas as pd
-        df = pd.read_csv(path, sep="\t")
-        self.labels = df["label"].tolist()
-        self.encodings = tokenizer(
-            df["text"].tolist(),
-            truncation=True,
-            padding="max_length",
-            max_length=max_length,
-            return_tensors="pt",
-        )
-
-    def __len__(self):
-        return len(self.labels)
-
-    def __getitem__(self, idx):
-        return {
-            "input_ids": self.encodings["input_ids"][idx],
-            "attention_mask": self.encodings["attention_mask"][idx],
-            "labels": torch.tensor(self.labels[idx], dtype=torch.long),
-        }
-
 
 def train(args):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
