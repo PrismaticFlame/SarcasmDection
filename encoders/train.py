@@ -11,6 +11,13 @@ VALID_ENCODERS = {"bert", "roberta", "deberta", "distilbert", "electra"}
 OUTPUT_DIR = "/app/outputs"
 NUM_LABELS = 2
 
+ENCODER_DEFAULTS = {
+    "bert":        {"lr": 2e-5, "batch_size": 16, "epochs": 3},
+    "roberta":     {"lr": 3e-5, "batch_size": 16, "epochs": 3},
+    "distilbert":  {"lr": 3e-5, "batch_size": 32, "epochs": 2},
+    "deberta":     {"lr": 1e-5, "batch_size": 8,  "epochs": 4},
+    "electra":     {"lr": 2e-5, "batch_size": 16, "epochs": 3},
+}
 
 class SarcasmDataset(Dataset):
     """
