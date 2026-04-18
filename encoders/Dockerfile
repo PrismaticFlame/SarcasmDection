@@ -1,3 +1,7 @@
+# Build context must be the encoders/ directory:
+#   docker build -f encoders/Dockerfile encoders/
+# or from within encoders/:
+#   docker build .
 FROM pytorch/pytorch:2.2.0-cuda11.8-cudnn8-runtime
 
 WORKDIR /app
@@ -11,6 +15,5 @@ VOLUME ["/app/outputs"]
 
 ENV ENCODER=bert
 
-ENTRYPOINT ["python", "train.py"]
-CMD ["--encoder", "${ENCODER}"]
+ENTRYPOINT ["sh", "-c", "python train.py --encoder ${ENCODER}"]
 
