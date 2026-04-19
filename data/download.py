@@ -4,11 +4,13 @@ Run from the project root:  python data/download.py
 Re-running is safe — already-downloaded files are skipped.
 """
 
+import bz2
+import glob
+import json
 import os
 import subprocess
 import sys
 import urllib.request
-import json
 
 RAW_DIR = os.path.join(os.path.dirname(__file__), "raw")
 
@@ -46,6 +48,18 @@ DATASETS = {
         # SARC data is not in the GitHub repo itself — it must be
         # downloaded separately. The repo only has evaluation code.
         # See: https://nlp.cs.princeton.edu/SARC/2.0/
+        (
+            "https://nlp.cs.princeton.edu/old/SARC/2.0/main/comments.json.bz2",
+            "comments.json.bz2",
+        ),
+        (
+            "https://nlp.cs.princeton.edu/old/SARC/2.0/main/test-balanced.csv.bz2",
+            "test-balanced.csv.bz2",
+        ),
+        (
+            "https://nlp.cs.princeton.edu/old/SARC/2.0/main/train-balanced.csv.bz2",
+            "train-balanced.csv.bz2",
+        ),
     ],
     "news_headlines": [
         (
@@ -114,20 +128,37 @@ def main():
     # Special note for SARC
     sarc_dir = os.path.join(RAW_DIR, "sarc")
     os.makedirs(sarc_dir, exist_ok=True)
-    sarc_readme = os.path.join(sarc_dir, "README.md")
-    if not os.path.isfile(sarc_readme):
-        with open(sarc_readme, "w") as f:
-            f.write(
-                "# SARC Dataset\n\n"
-                "The SARC 2.0 data files must be downloaded manually from:\n"
-                "https://nlp.cs.princeton.edu/SARC/2.0/\n\n"
-                "Download the following files into this directory:\n"
-                "- train-balanced.csv.bz2\n"
-                "- test-balanced.csv.bz2\n"
-                "- comments.json.bz2\n"
-            )
-        print("[sarc]")
-        print("  [note]  SARC requires manual download — see data/raw/sarc/README.md")
+    for filepath in glob.glob(os.path.join(sarc_dir, "*.bz2")):
+        newfilepath = filepath.removesuffix(".bz2")
+        if os.path.isfile(newfilepath):
+            os.remove(filepath)
+            print(f"[removed]        {filepath}")
+            continue
+        print(f"[decompressing]  {filepath}")
+        with (
+            open(newfilepath, "wb") as new_file,
+            bz2.BZ2File(filepath, "rb") as bzfile,
+        ):
+            for data in iter(lambda: bzfile.read(100 * 1024), b""):
+                new_file.write(data)
+        print(f"[decompressed]   {filepath}")
+        os.remove(filepath)
+        print(f"[removed]        {filepath}")
+
+    # sarc_readme = os.path.join(sarc_dir, "README.md")
+    # if not os.path.isfile(sarc_readme):
+    #     with open(sarc_readme, "w") as f:
+    #         f.write(
+    #             "# SARC Dataset\n\n"
+    #             "The SARC 2.0 data files must be downloaded manually from:\n"
+    #             "https://nlp.cs.princeton.edu/SARC/2.0/\n\n"
+    #             "Download the following files into this directory:\n"
+    #             "- train-balanced.csv.bz2\n"
+    #             "- test-balanced.csv.bz2\n"
+    #             "- comments.json.bz2\n"
+    #         )
+    #     print("[sarc]")
+    #     print("  [note]  SARC requires manual download — see data/raw/sarc/README.md")
 
     print("\nAll datasets downloaded. Next step: run data/preprocessing.py")
 
