@@ -5,6 +5,7 @@ Output files land in data/processed/<dataset>_<split>.tsv
 Run from the project root:  python data/preprocessing.py
 """
 
+import csv
 import json
 import os
 
@@ -19,6 +20,7 @@ RANDOM_SEED = 42
 # ---------------------------------------------------------------------------
 # Per-dataset parsers — each returns a DataFrame with columns: text, label
 # ---------------------------------------------------------------------------
+
 
 def process_news_headlines() -> pd.DataFrame:
     path = os.path.join(RAW_DIR, "news_headlines", "Sarcasm_Headlines_Dataset.json")
@@ -66,16 +68,35 @@ def process_sarcasm_v2() -> pd.DataFrame:
     return pd.concat(parts, ignore_index=True)
 
 
+def _parse_sarc_split(path: str, comments: dict) -> pd.DataFrame:
+    """Parse a SARC balanced CSV into (text, label) rows.
+
+    Each line is: ancestor_id|resp_id1 resp_id2|label1 label2
+    """
+    rows = []
+    with open(path, newline="") as f:
+        reader = csv.reader(f, delimiter="|")
+        for parts in reader:
+            if len(parts) < 3:
+                continue
+            resp_ids = parts[1].strip().split()
+            labels = parts[2].strip().split()
+            for rid, lab in zip(resp_ids, labels):
+                if rid in comments:
+                    rows.append({"text": comments[rid]["text"], "label": int(lab)})
+    return pd.DataFrame(rows)
+
+
 # ---------------------------------------------------------------------------
 # Split and write
 # ---------------------------------------------------------------------------
 
 PROCESSORS = {
     "news_headlines": process_news_headlines,
-    "isarcasmeval":   process_isarcasmeval,
-    "csc":            process_csc,
-    "mustard":        process_mustard,
-    "sarcasm_v2":     process_sarcasm_v2,
+    "isarcasmeval": process_isarcasmeval,
+    "csc": process_csc,
+    "mustard": process_mustard,
+    "sarcasm_v2": process_sarcasm_v2,
 }
 
 
@@ -84,11 +105,42 @@ def split_and_save(name: str, df: pd.DataFrame):
     df["text"] = df["text"].astype(str).str.strip()
     df = df[df["text"] != ""]
 
-    train, temp = train_test_split(df, test_size=0.2, random_state=RANDOM_SEED, stratify=df["label"])
-    val, test  = train_test_split(temp, test_size=0.5, random_state=RANDOM_SEED, stratify=temp["label"])
+    train, temp = train_test_split(
+        df, test_size=0.2, random_state=RANDOM_SEED, stratify=df["label"]
+    )
+    val, test = train_test_split(
+        temp, test_size=0.5, random_state=RANDOM_SEED, stratify=temp["label"]
+    )
 
     for split, data in [("train", train), ("val", val), ("test", test)]:
         out = os.path.join(OUT_DIR, f"{name}_{split}.tsv")
+        data.to_csv(out, sep="\t", index=False)
+        print(f"  {split}: {len(data)} rows -> {out}")
+
+
+def process_sarc():
+    """SARC has its own train/test splits, so we handle it separately."""
+    sarc_dir = os.path.join(RAW_DIR, "sarc")
+    comments_path = os.path.join(sarc_dir, "comments.json")
+
+    print("[sarc]")
+    print("  loading comments.json ...")
+    with open(comments_path) as f:
+        comments = json.load(f)
+
+    train_df = _parse_sarc_split(os.path.join(sarc_dir, "train-balanced.csv"), comments)
+    test_df = _parse_sarc_split(os.path.join(sarc_dir, "test-balanced.csv"), comments)
+
+    # Carve a validation set from training data
+    train_df, val_df = train_test_split(
+        train_df, test_size=0.1, random_state=RANDOM_SEED, stratify=train_df["label"]
+    )
+
+    for split, data in [("train", train_df), ("val", val_df), ("test", test_df)]:
+        data = data.dropna(subset=["text", "label"])
+        data["text"] = data["text"].astype(str).str.strip()
+        data = data[data["text"] != ""]
+        out = os.path.join(OUT_DIR, f"sarc_{split}.tsv")
         data.to_csv(out, sep="\t", index=False)
         print(f"  {split}: {len(data)} rows -> {out}")
 
@@ -102,6 +154,11 @@ def main():
             split_and_save(name, df)
         except FileNotFoundError as e:
             print(f"  [skip] missing file: {e}")
+
+    try:
+        process_sarc()
+    except FileNotFoundError as e:
+        print(f"  [skip] missing file: {e}")
 
 
 if __name__ == "__main__":
