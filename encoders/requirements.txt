@@ -5,3 +5,4 @@ numpy
 tiktoken
 sentencepiece
 protobuf
+docker
