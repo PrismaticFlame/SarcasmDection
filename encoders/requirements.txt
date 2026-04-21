@@ -2,3 +2,6 @@ transformers
 torch
 pandas
 numpy
+tiktoken
+sentencepiece
+protobuf
