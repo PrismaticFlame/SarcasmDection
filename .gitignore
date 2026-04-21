@@ -1,5 +1,10 @@
+# Files related
 .vscode/
 data/raw/*
 data/processed/*
 !data/raw/.gitkeep
 !data/processed/.gitkeep
+
+
+# Python
+__pycache__
