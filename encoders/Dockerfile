@@ -2,14 +2,16 @@
 #   docker build -f encoders/Dockerfile encoders/
 # or from within encoders/:
 #   docker build .
-FROM pytorch/pytorch:2.2.0-cuda11.8-cudnn8-runtime
+FROM pytorch/pytorch:2.11.0-cuda13.0-cudnn9-runtime
 
 WORKDIR /app
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+COPY encoders/requirements.txt .
+RUN pip install --no-cache-dir --break-system-packages -r requirements.txt
 
-COPY . .
+COPY encoders/ .
+
+COPY common/ ./common/
 
 VOLUME ["/app/outputs"]
 

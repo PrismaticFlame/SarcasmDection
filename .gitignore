@@ -5,6 +5,9 @@ data/processed/*
 !data/raw/.gitkeep
 !data/processed/.gitkeep
 
+encoders/outputs/
+!encoders/outputs/.gitkeep
+
 
 # Python
 __pycache__
