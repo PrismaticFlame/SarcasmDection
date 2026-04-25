@@ -1,40 +1,64 @@
+import argparse
 import os
 
 import docker
+import docker.errors
 
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
 model_names = ["bert", "roberta", "distilbert", "deberta", "electra"]
+datasets = ["csc", "isarcasmeval", "mustard", "news_headlines", "sarc", "sarcasm_v2"]
+
+IMAGE_TAG = "sarcasm-encoder"
 
 
-def main():
-    print("[not-docker] creating docker client...")
-    client = docker.from_env()
-    print("[not-docker] docker client created.")
+def build_image(client):
     print("[docker] building docker image...")
     for chunk in client.api.build(
         path=project_root,
         dockerfile="encoders/Dockerfile",
-        tag="sarcasm-encoder",
+        tag=IMAGE_TAG,
         decode=True,
     ):
         if "stream" in chunk:
             print(chunk["stream"], end="")
         if "error" in chunk:
             print("ERROR:", chunk["error"])
-            return
-
+            return False
     print("[docker] docker image built.")
+    return True
+
+
+def image_exists(client):
+    try:
+        client.images.get(IMAGE_TAG)
+        return True
+    except docker.errors.ImageNotFound:
+        return False
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--rebuild", action="store_true", help="Force rebuild the Docker image")
+    args = parser.parse_args()
+
+    print("[not-docker] creating docker client...")
+    client = docker.from_env()
+    print("[not-docker] docker client created.")
+
+    if args.rebuild or not image_exists(client):
+        if not build_image(client):
+            return
+    else:
+        print(f"[docker] image '{IMAGE_TAG}' already exists, skipping build (use --rebuild to force)")
 
     for model in model_names:
-        print(f"[{model}] starting...")
+        print(f"[{model}] starting (all datasets)...")
         try:
             container_output = client.containers.run(
                 "sarcasm-encoder",
                 environment={
                     "ENCODER": model,
-                    "TRAIN_DATA": "/app/data/news_headlines_train.tsv",
-                    "VAL_DATA": "/app/data/news_headlines_val.tsv",
                     "PYTHONUNBUFFERED": "1",
                 },
                 volumes={
@@ -59,8 +83,7 @@ def main():
             print(f"[{model}] done.")
         except docker.errors.ContainerError as e:
             print(f"[{model}] FAILED (exit {e.exit_status})")
-            print(e.stderr.decode() if e.stderr else "no stderr")
-            break
+            print(e.stderr if e.stderr else "no stderr")
 
     print("Done.")
 

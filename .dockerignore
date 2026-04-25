@@ -1,0 +1,7 @@
+encoders/outputs/
+data/
+results/
+sarcasm-detection-frontend/
+llms/
+**/__pycache__/
+**/*.pyc

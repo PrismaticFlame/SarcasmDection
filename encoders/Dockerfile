@@ -18,4 +18,3 @@ VOLUME ["/app/outputs"]
 ENV ENCODER=bert
 
 ENTRYPOINT ["sh", "-c", "python train.py --encoder ${ENCODER}"]
-

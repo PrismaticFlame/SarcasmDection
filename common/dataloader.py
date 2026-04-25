@@ -10,7 +10,9 @@ class SarcasmDataset(Dataset):
 
     def __init__(self, path, tokenizer, max_length=128):
         import pandas as pd
-        df = pd.read_csv(path, sep="\t")
+
+        df = pd.read_csv(path, sep="\t", dtype={"text": str})
+        df = df.dropna(subset=["text"])
         self.labels = df["label"].tolist()
         self.encodings = tokenizer(
             df["text"].tolist(),

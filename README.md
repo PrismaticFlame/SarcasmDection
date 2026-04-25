@@ -48,3 +48,18 @@ cd data
 python download.py
 python preprocessing.py
 ```
+
+After running these commands, you should have all 6 datasets downloaded. You can manually download the datasets from the links in `data/datasets.txt` if one or more of them fail to download.
+
+For the following portions, there are different methods of proceeding: Encoders and LLMs. 
+
+## Encoders
+
+After running both previous commands, all that is required is to start the encoders Docker from the project root (not inside encoders). 
+
+```bash
+cd ../
+python encoders/orchestrator.py
+```
+
+This will run the full training script for the encoders. A Docker image will be created once at the beginning of the runtime, and then the orchestrator will spin up 5 containers over the course of the training. Each container will train one model on all 6 datasets (separately). This will take a long time.
