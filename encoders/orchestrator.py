@@ -52,37 +52,63 @@ def main():
     else:
         print(f"[docker] image '{IMAGE_TAG}' already exists, skipping build (use --rebuild to force)")
 
+    volumes = {
+        os.path.join(project_root, "data", "processed"): {
+            "bind": "/app/data",
+            "mode": "ro",
+        },
+        os.path.join(project_root, "encoders", "outputs"): {
+            "bind": "/app/outputs",
+            "mode": "rw",
+        },
+    }
+    gpu = [docker.types.DeviceRequest(count=-1, capabilities=[["gpu"]])]
+
     for model in model_names:
-        print(f"[{model}] starting (all datasets)...")
+        print(f"[{model}] training (all datasets)...")
         try:
             container_output = client.containers.run(
-                "sarcasm-encoder",
+                IMAGE_TAG,
                 environment={
                     "ENCODER": model,
                     "PYTHONUNBUFFERED": "1",
                 },
-                volumes={
-                    os.path.join(project_root, "data", "processed"): {
-                        "bind": "/app/data",
-                        "mode": "ro",
-                    },
-                    os.path.join(project_root, "encoders", "outputs"): {
-                        "bind": "/app/outputs",
-                        "mode": "rw",
-                    },
-                },
-                remove=True,  # is essentially the --rm flag
+                volumes=volumes,
+                remove=True,
                 stream=True,
                 stderr=True,
-                device_requests=[
-                    docker.types.DeviceRequest(count=-1, capabilities=[["gpu"]])
-                ],
+                device_requests=gpu,
             )
             for chunk in container_output:
                 print(chunk.decode(), end="")
-            print(f"[{model}] done.")
+            print(f"[{model}] training done.")
         except docker.errors.ContainerError as e:
             print(f"[{model}] FAILED (exit {e.exit_status})")
+            print(e.stderr if e.stderr else "no stderr")
+
+    print("All training complete. Starting cross-dataset evaluation...")
+
+    for model in model_names:
+        print(f"[{model}] cross-dataset evaluation...")
+        try:
+            container_output = client.containers.run(
+                IMAGE_TAG,
+                environment={
+                    "SCRIPT": "common/cross_dataset.py",
+                    "ARGS": f"--encoder {model}",
+                    "PYTHONUNBUFFERED": "1",
+                },
+                volumes=volumes,
+                remove=True,
+                stream=True,
+                stderr=True,
+                device_requests=gpu,
+            )
+            for chunk in container_output:
+                print(chunk.decode(), end="")
+            print(f"[{model}] cross-dataset done.")
+        except docker.errors.ContainerError as e:
+            print(f"[{model}] cross FAILED (exit {e.exit_status})")
             print(e.stderr if e.stderr else "no stderr")
 
     print("Done.")

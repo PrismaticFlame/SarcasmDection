@@ -41,10 +41,36 @@ def process_isarcasmeval() -> pd.DataFrame:
 def process_csc() -> pd.DataFrame:
     path = os.path.join(RAW_DIR, "csc", "data_full.csv")
     df = pd.read_csv(path)[["response_text", "sarcasm_score_by_evaluator"]]
-    # Scores range ~1–9; treat >=5 as sarcastic (majority evaluator agreement)
+    # Scores range 1–6; treat >=5 as sarcastic (strong evaluator agreement)
     df["label"] = (df["sarcasm_score_by_evaluator"] >= 5).astype(int)
     df = df[["response_text", "label"]].rename(columns={"response_text": "text"})
     return df
+
+
+def process_csc_a() -> pd.DataFrame:
+    """CSC with author (speaker) label instead of third-party evaluator."""
+    path = os.path.join(RAW_DIR, "csc", "data_full.csv")
+    df = pd.read_csv(path)[["response_text", "sarcasm_score_by_speaker"]]
+    df["label"] = (df["sarcasm_score_by_speaker"] >= 5).astype(int)
+    return df[["response_text", "label"]].rename(columns={"response_text": "text"})
+
+
+def process_csc_cont() -> pd.DataFrame:
+    """CSC with third-party label and situation context prepended."""
+    path = os.path.join(RAW_DIR, "csc", "data_full.csv")
+    df = pd.read_csv(path)[["context_text", "response_text", "sarcasm_score_by_evaluator"]]
+    df["text"] = df["context_text"].str.strip() + " | " + df["response_text"].str.strip()
+    df["label"] = (df["sarcasm_score_by_evaluator"] >= 5).astype(int)
+    return df[["text", "label"]]
+
+
+def process_csc_a_cont() -> pd.DataFrame:
+    """CSC with author label and situation context prepended."""
+    path = os.path.join(RAW_DIR, "csc", "data_full.csv")
+    df = pd.read_csv(path)[["context_text", "response_text", "sarcasm_score_by_speaker"]]
+    df["text"] = df["context_text"].str.strip() + " | " + df["response_text"].str.strip()
+    df["label"] = (df["sarcasm_score_by_speaker"] >= 5).astype(int)
+    return df[["text", "label"]]
 
 
 def process_mustard() -> pd.DataFrame:
@@ -54,6 +80,18 @@ def process_mustard() -> pd.DataFrame:
         {"text": entry["utterance"], "label": int(entry["sarcasm"])}
         for entry in data.values()
     ]
+    return pd.DataFrame(rows)
+
+
+def process_mustard_cont() -> pd.DataFrame:
+    """MUStARD with prior dialogue turns prepended as context."""
+    path = os.path.join(RAW_DIR, "mustard", "sarcasm_data.json")
+    data = json.load(open(path))
+    rows = []
+    for entry in data.values():
+        context = " | ".join(entry["context"]) if entry["context"] else ""
+        text = context + " | " + entry["utterance"] if context else entry["utterance"]
+        rows.append({"text": text, "label": int(entry["sarcasm"])})
     return pd.DataFrame(rows)
 
 
@@ -95,7 +133,11 @@ PROCESSORS = {
     "news_headlines": process_news_headlines,
     "isarcasmeval": process_isarcasmeval,
     "csc": process_csc,
+    "csc_a": process_csc_a,
+    "csc_cont": process_csc_cont,
+    "csc_a_cont": process_csc_a_cont,
     "mustard": process_mustard,
+    "mustard_cont": process_mustard_cont,
     "sarcasm_v2": process_sarcasm_v2,
 }
 

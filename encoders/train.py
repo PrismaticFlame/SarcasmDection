@@ -22,9 +22,9 @@ from common.dataloader import SarcasmDataset
 
 VALID_ENCODERS = {"bert", "roberta", "deberta", "distilbert", "electra"}
 DATASET_NAMES = {
-    "csc",
+    "csc", "csc_a", "csc_cont", "csc_a_cont",
     "isarcasmeval",
-    "mustard",
+    "mustard", "mustard_cont",
     "news_headlines",
     "sarc",
     "sarcasm_v2",
