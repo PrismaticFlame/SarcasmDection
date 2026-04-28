@@ -7,6 +7,7 @@ import sys
 import time
 
 import torch
+from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
 from torch.utils.data import DataLoader
 from transformers import get_linear_schedule_with_warmup
 
@@ -79,7 +80,7 @@ def train(args):
             num_training_steps=total_steps,
         )
 
-        best_val_acc = 0.0
+        best_val_f1 = 0.0
         history = []
 
         for epoch in range(1, args.epochs + 1):
@@ -102,17 +103,20 @@ def train(args):
                 total_loss += outputs.loss.item()
 
             avg_loss = total_loss / len(train_loader)
-            val_acc = evaluate(model, val_loader, device)
-            history.append({"epoch": epoch, "loss": avg_loss, "val_acc": val_acc})
+            metrics = evaluate(model, val_loader, device)
+            history.append({"epoch": epoch, "loss": avg_loss, **metrics})
             print(
-                f"[{args.encoder}][{dataset}] epoch {epoch}/{args.epochs}  loss={avg_loss:.4f}  val_acc={val_acc:.4f}"
+                f"[{args.encoder}][{dataset}] epoch {epoch}/{args.epochs} "
+                f"loss={avg_loss:.4f}  acc={metrics['accuracy']:.4f}  "
+                f"p={metrics['precision']:.4f}  r={metrics['recall']:.4f}  "
+                f"f1={metrics['f1']:.4f}"
             )
 
-            if val_acc > best_val_acc:
-                best_val_acc = val_acc
+            if metrics["f1"] > best_val_f1:
+                best_val_f1 = metrics["f1"]
                 save(model, tokenizer, args.encoder, dataset, history)
 
-        print(f"[{args.encoder}][{dataset}] done. best_val_acc={best_val_acc:.4f}")
+        print(f"[{args.encoder}][{dataset}] done. best_val_f1={best_val_f1:.4f}")
 
         # free GPU memory before next dataset
         del model, optimizer, scheduler, train_loader, val_loader
@@ -123,17 +127,23 @@ def train(args):
 
 def evaluate(model, loader, device):
     model.eval()
-    correct = total = 0
+    all_preds, all_labels = [], []
     with torch.no_grad():
         for batch in loader:
             outputs = model(
                 input_ids=batch["input_ids"].to(device),
                 attention_mask=batch["attention_mask"].to(device),
             )
-            preds = outputs.logits.argmax(dim=-1)
-            correct += (preds == batch["labels"].to(device)).sum().item()
-            total += len(batch["labels"])
-    return correct / total if total else 0.0
+            preds = outputs.logits.argmax(dim=-1).cpu().tolist()
+            labels = batch["labels"].tolist()
+            all_preds.extend(preds)
+            all_labels.extend(labels)
+    return {
+        "accuracy":  round(float(accuracy_score(all_labels, all_preds)), 6),
+        "precision": round(float(precision_score(all_labels, all_preds, zero_division=0)), 6),
+        "recall":    round(float(recall_score(all_labels, all_preds, zero_division=0)), 6),
+        "f1":        round(float(f1_score(all_labels, all_preds, zero_division=0)), 6),
+    }
 
 
 def save(model, tokenizer, encoder_name, dataset_name, history):

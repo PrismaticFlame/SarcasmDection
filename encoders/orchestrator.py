@@ -70,7 +70,7 @@ def main():
             container_output = client.containers.run(
                 IMAGE_TAG,
                 environment={
-                    "ENCODER": model,
+                    "ARGS": f"--encoder {model}",
                     "PYTHONUNBUFFERED": "1",
                 },
                 volumes=volumes,

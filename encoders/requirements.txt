@@ -6,3 +6,4 @@ tiktoken
 sentencepiece
 protobuf
 docker
+scikit-learn

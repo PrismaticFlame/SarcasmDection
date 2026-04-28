@@ -4,11 +4,14 @@ import os
 import sys
 
 import torch
+from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
 from torch.utils.data import DataLoader
 from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 from common.dataloader import SarcasmDataset
+
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
 DATASET_NAMES = [
     "csc", "csc_a", "csc_cont", "csc_a_cont",
@@ -32,24 +35,28 @@ def same_corpus(a: str, b: str) -> bool:
 
 def evaluate(model, loader, device):
     model.eval()
-    correct = total = 0
+    all_preds, all_labels = [], []
     with torch.no_grad():
         for batch in loader:
             outputs = model(
                 input_ids=batch["input_ids"].to(device),
                 attention_mask=batch["attention_mask"].to(device),
             )
-            preds = outputs.logits.argmax(dim=-1)
-            correct += (preds == batch["labels"].to(device)).sum().item()
-            total += len(batch["labels"])
-    return correct / total if total else 0.0
+            all_preds.extend(outputs.logits.argmax(dim=-1).cpu().tolist())
+            all_labels.extend(batch["labels"].tolist())
+    return {
+        "accuracy":  round(float(accuracy_score(all_labels, all_preds)), 6),
+        "precision": round(float(precision_score(all_labels, all_preds, zero_division=0)), 6),
+        "recall":    round(float(recall_score(all_labels, all_preds, zero_division=0)), 6),
+        "f1":        round(float(f1_score(all_labels, all_preds, zero_division=0)), 6),
+    }
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--encoder", required=True)
-    parser.add_argument("--data-dir", default=os.getenv("DATA_DIR", "/app/data"))
-    parser.add_argument("--output-dir", default=os.getenv("OUTPUT_DIR", "/app/outputs"))
+    parser.add_argument("--data-dir", default=os.getenv("DATA_DIR", os.path.join(PROJECT_ROOT, "data", "processed")))
+    parser.add_argument("--output-dir", default=os.getenv("OUTPUT_DIR", os.path.join(PROJECT_ROOT, "encoders", "outputs")))
     parser.add_argument("--batch-size", type=int, default=32)
     args = parser.parse_args()
 
@@ -92,10 +99,14 @@ def main():
             try:
                 ds = SarcasmDataset(test_path, tokenizer)
                 loader = DataLoader(ds, batch_size=args.batch_size)
-                acc = evaluate(model, loader, device)
-                results[test_dataset] = round(acc, 6)
+                metrics = evaluate(model, loader, device)
+                results[test_dataset] = metrics
                 tag = " <-- intra" if test_dataset == train_dataset else ""
-                print(f"  [{test_dataset}] acc={acc:.4f}{tag}")
+                print(
+                    f"  [{test_dataset}] acc={metrics['accuracy']:.4f}  "
+                    f"p={metrics['precision']:.4f}  r={metrics['recall']:.4f}  "
+                    f"f1={metrics['f1']:.4f}{tag}"
+                )
             except Exception as e:
                 print(f"  [{test_dataset}] error: {e}")
                 results[test_dataset] = None
