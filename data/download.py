@@ -11,6 +11,8 @@ import os
 import subprocess
 import sys
 import urllib.request
+import ssl
+ssl._create_default_https_context = ssl._create_unverified_context
 
 RAW_DIR = os.path.join(os.path.dirname(__file__), "raw")
 
