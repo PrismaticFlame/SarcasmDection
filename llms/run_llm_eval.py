@@ -35,8 +35,6 @@ Answer only: Sarcastic or Not Sarcastic.
 
 
 def build_few_shot(train_df, k=4):
-    # Select balanced few-shot examples:
-    # 2 sarcastic + 2 not sarcastic when k = 4
 
     sarcastic_examples = train_df[train_df["label"] == 1].sample(
         n=k // 2,
@@ -63,8 +61,6 @@ def build_few_shot(train_df, k=4):
 def few_shot_prompt(base_prompt, text):
     return base_prompt + f"\nText: {text}\nAnswer only: Sarcastic or Not Sarcastic."
 
-
-# ===== LLM =====
 def ask_llm(prompt):
     try:
         response = client.chat.completions.create(
@@ -176,12 +172,9 @@ if __name__ == "__main__":
     SAMPLE_SIZE = 50
     output_path = PROJECT_ROOT / "results" / f"{MODEL}_results.csv"
 
-    # 从这里重新开始
     START_FROM = ("news_headlines", "csc")
 
     started = False
-
-    # 如果旧结果文件存在，先保留 START_FROM 之前的结果
     if output_path.exists():
         existing_df = pd.read_csv(output_path)
 
