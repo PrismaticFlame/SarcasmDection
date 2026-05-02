@@ -8,6 +8,7 @@ import time
 
 import torch
 from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
+from torch.amp import GradScaler, autocast
 from torch.utils.data import DataLoader
 from transformers import get_linear_schedule_with_warmup
 
@@ -34,11 +35,11 @@ OUTPUT_DIR = "/app/outputs"
 NUM_LABELS = 2
 
 ENCODER_DEFAULTS = {
-    "bert": {"lr": 2e-5, "batch_size": 16, "epochs": 3},
-    "roberta": {"lr": 3e-5, "batch_size": 16, "epochs": 3},
-    "distilbert": {"lr": 3e-5, "batch_size": 32, "epochs": 2},
-    "deberta": {"lr": 1e-5, "batch_size": 8, "epochs": 4},
-    "electra": {"lr": 2e-5, "batch_size": 16, "epochs": 3},
+    "bert":       {"lr": 2e-5, "batch_size": 16, "epochs": 3, "warmup_ratio": 0.10, "eps": 1e-8, "clip": 1.0},
+    "roberta":    {"lr": 3e-5, "batch_size": 16, "epochs": 3, "warmup_ratio": 0.10, "eps": 1e-8, "clip": 1.0},
+    "distilbert": {"lr": 3e-5, "batch_size": 32, "epochs": 2, "warmup_ratio": 0.10, "eps": 1e-8, "clip": 1.0},
+    "deberta":    {"lr": 5e-6, "batch_size": 8,  "epochs": 4, "warmup_ratio": 0.20, "eps": 1e-6, "clip": 1.0},
+    "electra":    {"lr": 2e-5, "batch_size": 16, "epochs": 3, "warmup_ratio": 0.10, "eps": 1e-8, "clip": 1.0},
 }
 
 
@@ -72,13 +73,14 @@ def train(args):
             f"[{args.encoder}][{dataset}] {len(train_dataset)} train, {len(val_dataset)} val"
         )
 
-        optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr)
+        optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, eps=args.eps)
         total_steps = len(train_loader) * args.epochs
         scheduler = get_linear_schedule_with_warmup(
             optimizer,
-            num_warmup_steps=total_steps // 10,
+            num_warmup_steps=int(total_steps * args.warmup_ratio),
             num_training_steps=total_steps,
         )
+        scaler = GradScaler("cuda") if device.type == "cuda" else None
 
         best_val_f1 = 0.0
         history = []
@@ -86,21 +88,36 @@ def train(args):
         for epoch in range(1, args.epochs + 1):
             model.train()
             total_loss = 0.0
+            nan_batches = 0
             print(
                 f"[{args.encoder}][{dataset}] epoch {epoch}/{args.epochs} starting..."
             )
             for batch in train_loader:
                 optimizer.zero_grad()
-                outputs = model(
-                    input_ids=batch["input_ids"].to(device),
-                    attention_mask=batch["attention_mask"].to(device),
-                    labels=batch["labels"].to(device),
-                )
-                outputs.loss.backward()
-                torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-                optimizer.step()
+                with autocast("cuda", enabled=(scaler is not None)):
+                    outputs = model(
+                        input_ids=batch["input_ids"].to(device),
+                        attention_mask=batch["attention_mask"].to(device),
+                        labels=batch["labels"].to(device),
+                    )
+                loss = outputs.loss
+                if torch.isnan(loss):
+                    nan_batches += 1
+                    continue
+                if scaler:
+                    scaler.scale(loss).backward()
+                    scaler.unscale_(optimizer)
+                    torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip)
+                    scaler.step(optimizer)
+                    scaler.update()
+                else:
+                    loss.backward()
+                    torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip)
+                    optimizer.step()
                 scheduler.step()
-                total_loss += outputs.loss.item()
+                total_loss += loss.item()
+            if nan_batches:
+                print(f"[{args.encoder}][{dataset}]   warning: {nan_batches} NaN batches skipped")
 
             avg_loss = total_loss / len(train_loader)
             metrics = evaluate(model, val_loader, device)
@@ -159,10 +176,21 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--encoder", required=True, choices=VALID_ENCODERS)
     parser.add_argument("--data-dir", default=os.getenv("DATA_DIR", "/app/data"))
-    parser.add_argument("--epochs", type=int, default=int(os.getenv("EPOCHS", "3")))
-    parser.add_argument(
-        "--batch-size", type=int, default=int(os.getenv("BATCH_SIZE", "16"))
-    )
-    parser.add_argument("--lr", type=float, default=float(os.getenv("LR", "2e-5")))
+    parser.add_argument("--epochs",       type=int,   default=None)
+    parser.add_argument("--batch-size",   type=int,   default=None)
+    parser.add_argument("--lr",           type=float, default=None)
+    parser.add_argument("--warmup-ratio", type=float, default=None)
+    parser.add_argument("--eps",          type=float, default=None)
+    parser.add_argument("--clip",         type=float, default=None)
     args = parser.parse_args()
+
+    # Fill any unset args from per-encoder defaults
+    defaults = ENCODER_DEFAULTS[args.encoder]
+    if args.epochs       is None: args.epochs       = int(os.getenv("EPOCHS",       defaults["epochs"]))
+    if args.batch_size   is None: args.batch_size   = int(os.getenv("BATCH_SIZE",   defaults["batch_size"]))
+    if args.lr           is None: args.lr           = float(os.getenv("LR",         defaults["lr"]))
+    if args.warmup_ratio is None: args.warmup_ratio = float(os.getenv("WARMUP_RATIO", defaults["warmup_ratio"]))
+    if args.eps          is None: args.eps          = float(os.getenv("EPS",         defaults["eps"]))
+    if args.clip         is None: args.clip         = float(os.getenv("CLIP",        defaults["clip"]))
+
     train(args)

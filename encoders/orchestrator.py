@@ -40,7 +40,12 @@ def image_exists(client):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--rebuild", action="store_true", help="Force rebuild the Docker image")
+    parser.add_argument("--models", nargs="+", choices=model_names, metavar="MODEL",
+                        help="Models to run (default: all). E.g. --models deberta roberta")
+    parser.add_argument("--skip-cross", action="store_true", help="Skip cross-dataset evaluation")
     args = parser.parse_args()
+
+    selected = args.models if args.models else model_names
 
     print("[not-docker] creating docker client...")
     client = docker.from_env()
@@ -64,7 +69,7 @@ def main():
     }
     gpu = [docker.types.DeviceRequest(count=-1, capabilities=[["gpu"]])]
 
-    for model in model_names:
+    for model in selected:
         print(f"[{model}] training (all datasets)...")
         try:
             container_output = client.containers.run(
@@ -86,16 +91,20 @@ def main():
             print(f"[{model}] FAILED (exit {e.exit_status})")
             print(e.stderr if e.stderr else "no stderr")
 
+    if args.skip_cross:
+        print("Done (cross-dataset evaluation skipped).")
+        return
+
     print("All training complete. Starting cross-dataset evaluation...")
 
-    for model in model_names:
+    for model in selected:
         print(f"[{model}] cross-dataset evaluation...")
         try:
             container_output = client.containers.run(
                 IMAGE_TAG,
                 environment={
                     "SCRIPT": "common/cross_dataset.py",
-                    "ARGS": f"--encoder {model}",
+                    "ARGS": f"--encoder {model} --data-dir /app/data --output-dir /app/outputs",
                     "PYTHONUNBUFFERED": "1",
                 },
                 volumes=volumes,
